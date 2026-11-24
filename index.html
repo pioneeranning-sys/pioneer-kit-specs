@@ -11176,6 +11176,15 @@ function fitCell(part,angle,stem){
 /* ------------------------------ edit ------------------------------ */
 let DRAFT=null;let DRAFT_VARIANT='standard';let CURRENT_SPEC_VARIANT='male';
 function activeLines(){return DRAFT_VARIANT==='standard'?DRAFT.lines:(DRAFT.fittingVariants[DRAFT_VARIANT]||[]);}
+function syncOtherVariantLayout(){
+  if(!DRAFT||!DRAFT.fittingVariants)return;
+  const otherKey=DRAFT_VARIANT==='male'?'female':'male';
+  const current=activeLines(),other=DRAFT.fittingVariants[otherKey];
+  while(other.length>current.length)other.pop();
+  while(other.length<current.length)other.push(cloneLineLayout(current[other.length],true));
+  const shared=['bag','description','from','to','cutLength','supports','adrBoots','notes'];
+  current.forEach((line,i)=>shared.forEach(key=>other[i][key]=line[key]));
+}
 function cloneLineLayout(line,clearFittings=false){const c=JSON.parse(JSON.stringify(line));if(clearFittings)['f1part','f1angle','f1stem','f1banjo','f2part','f2angle','f2stem','f2banjo'].forEach(k=>c[k]='');return c;}
 function toggleFittingVariants(enabled){readForm();if(enabled){const base=(DRAFT.lines||[blankLine()]).map(l=>cloneLineLayout(l));DRAFT.fittingVariants={male:base,female:base.map(l=>cloneLineLayout(l,true))};DRAFT_VARIANT='male';}else{if(!confirm('Turn off male/female fitting versions? The separate female fitting specifications will be removed.')){renderEdit();return;}DRAFT.lines=(DRAFT.fittingVariants.male||activeLines()).map(l=>cloneLineLayout(l));delete DRAFT.fittingVariants;DRAFT_VARIANT='standard';}renderEdit();}
 function newKit(){ return {id:uid(),active:true,sku:"",manufacturer:"",model:"",variant:"",year:"",
@@ -11249,6 +11258,7 @@ function setLineCount(){
   renderLines();
 }
 function renderLines(){
+  syncOtherVariantLayout();
   const wrap=$('#linesWrap');wrap.innerHTML="";
   const lines=activeLines();
   lines.sort((a,b)=>{
@@ -11334,7 +11344,7 @@ document.addEventListener('click', e=>{
   if(!t) return;
   if(t.dataset.open!=null){CURRENT_SPEC_VARIANT='male';return renderDetail(t.dataset.open);}
   if(t.dataset.specvariant!=null){CURRENT_SPEC_VARIANT=t.dataset.specvariant;return renderDetail(CURRENT_DETAIL);}
-  if(t.dataset.fitvariant!=null){readForm();DRAFT_VARIANT=t.dataset.fitvariant;renderEdit();return;}
+  if(t.dataset.fitvariant!=null){readForm();syncOtherVariantLayout();DRAFT_VARIANT=t.dataset.fitvariant;renderEdit();return;}
   if(t.dataset.edit!=null) return openEdit(t.dataset.edit);
   if(t.dataset.editid!=null) return openEdit(t.dataset.editid);
   if(t.dataset.dup!=null) return dupKit(t.dataset.dup);
@@ -11355,6 +11365,7 @@ editView.addEventListener('input', e=>{
   const el=e.target; if(el.dataset.l==null) return;
   const l=activeLines()[+el.dataset.l]; if(!l) return;
   l[el.dataset.k] = el.type==='checkbox' ? el.checked : el.value;
+  if(DRAFT.fittingVariants&&!['f1part','f1angle','f1stem','f1banjo','f2part','f2angle','f2stem','f2banjo'].includes(el.dataset.k))syncOtherVariantLayout();
 });
 
 function dupKit(id){
@@ -11447,7 +11458,7 @@ function rowsToKits(rows){
       adrBoots:/^(yes|true|1)$/i.test(g(r,"ADR Boots")),
       notes:g(r,"Line Notes")};
     const has=Object.values(L).some(v=> v===true || (typeof v==='string' && v));
-    const option=(g(r,"Fitting Variant")||"Standard").toLowerCase();
+    const option=(g(r,"Fitting Variant")||"Standard").toLowerCase().replace(/\s+fittings?$/,'');
     if(has||option==='male'||option==='female'){
       if(option==="male"||option==="female"){
         if(!k.fittingVariants[option])k.fittingVariants[option]=[];
