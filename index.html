@@ -65,7 +65,18 @@
   .btn-dark{background:var(--charcoal);color:#fff}
   .btn-sm{padding:8px 12px;font-size:13px;border-radius:8px}
 
-  main{max-width:none;margin:0 auto;padding:20px 26px 80px}
+  .app-layout{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:calc(100vh - 73px)}
+  .app-nav{background:#fff;border-right:1px solid var(--line);padding:22px 14px;position:sticky;top:73px;height:calc(100vh - 73px);align-self:start}
+  .app-nav-title{font:700 12px var(--display);color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:4px 12px 12px}
+  .module-tab{display:flex;width:100%;align-items:center;text-align:left;margin:4px 0;padding:13px 12px;border-radius:10px;background:transparent;color:var(--ink);font-size:15px}.module-tab.active{background:#e9f2e2;color:var(--deep);box-shadow:inset 3px 0 var(--accent)}.module-tab .nav-count{margin-left:auto;font-size:12px;color:var(--muted);font-weight:500}
+  .app-nav-note{margin:22px 10px 0;padding:14px 12px;background:#f4f8f1;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:13px;line-height:1.5}
+  main{min-width:0;max-width:none;margin:0 auto;padding:26px clamp(18px,3vw,42px) 80px;width:100%}
+  .page-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin:2px 0 22px}.page-heading h2{font-size:26px;color:var(--ink)}.page-heading p{margin:5px 0 0;color:var(--muted);font-size:15px}
+  .workflow-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:4px 0 20px}.workflow-step{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--muted);font-size:14px;font-weight:600}.workflow-step b{display:inline-grid;place-items:center;width:23px;height:23px;border-radius:50%;margin-right:8px;background:#e9f2e2;color:var(--deep)}
+  .detail-variants{margin:0 0 12px}
+  .variant-panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;margin:-4px 0 18px}.variant-panel .check{font-size:15px}.variant-buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}.variant-button{border:1px solid var(--line);background:#fff;color:var(--ink);padding:10px 16px}.variant-button.active{background:var(--deep);border-color:var(--deep);color:#fff}.variant-caption{color:var(--muted);font-size:14px;margin-top:8px}
+  @media(max-width:850px){.app-layout{grid-template-columns:1fr}.app-nav{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:10px 14px;display:flex;align-items:center;gap:8px;overflow-x:auto}.app-nav-title,.app-nav-note{display:none}.module-tab{width:auto;white-space:nowrap;margin:0}.module-tab .nav-count{margin-left:8px}}
+  @media(max-width:720px){.workflow-steps{grid-template-columns:1fr}.page-heading{align-items:flex-start;flex-direction:column}}
 
   /* ---------- search + toolbar ---------- */
   .tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:2px solid var(--line)}
@@ -220,13 +231,15 @@
   <button class="bb-btn" id="backupNow">Back up now</button>
 </div>
 
-<main>
+<div class="app-layout">
+  <nav class="app-nav" aria-label="Kit specification sections"><div class="app-nav-title">Specifications</div>
+    <button class="module-tab active" data-tab="Brake Lines">Brake line kits <span class="nav-count" id="brakeNavCount"></span></button>
+    <button class="module-tab" data-tab="Fuel Lines">Fuel line kits <span class="nav-count" id="fuelNavCount"></span></button>
+    <div class="app-nav-note">Choose a kit to review its specification, or add a kit and work through product, vehicle and line details.</div>
+  </nav><main>
   <!-- ===================== LIST ===================== -->
   <section id="listView">
-    <div class="tabs">
-      <button class="tab active" data-tab="Brake Lines">Brake Lines</button>
-      <button class="tab" data-tab="Fuel Lines">Fuel Lines</button>
-    </div>
+    <div class="page-heading"><div><h2 id="listTitle">Brake line kits</h2><p>Vehicle-specific kit records and fitting specifications</p></div></div>
     <div class="toolbar">
       <div class="search">
         <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.49 4.49 0 0 1 9.5 14z"/></svg>
@@ -262,6 +275,7 @@
   <!-- ===================== EDIT ===================== -->
   <section id="editView" class="hidden"></section>
 </main>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -11041,14 +11055,15 @@ function show(which){
 /* ------------------------------ list ------------------------------- */
 let currentTab = "Brake Lines";
 const isFuel = k => /fuel/i.test(k.productType||"") || (k.sku||"").toUpperCase().startsWith("FLK");
-function setActiveTab(){ document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===currentTab)); }
+function setActiveTab(){document.querySelectorAll('.module-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===currentTab));const title=$('#listTitle');if(title)title.textContent=currentTab==="Fuel Lines"?"Fuel line kits":"Brake line kits";}
 function renderList(){
   const q = $('#searchBox').value.trim().toLowerCase();
   const inTab = DATA.filter(k => currentTab==="Fuel Lines" ? isFuel(k) : !isFuel(k));
   const rows = inTab.filter(k=>{
     if(!q) return true;
+    const allLines=[...(k.lines||[]),...Object.values(k.fittingVariants||{}).flat()];
     const hay = [k.sku,k.manufacturer,k.model,k.variant,k.year,k.productType,k.notes,
-      ...(k.lines||[]).flatMap(l=>[l.f1part,l.f2part,l.description,l.from,l.to])]
+      ...allLines.flatMap(l=>[l.f1part,l.f2part,l.description,l.from,l.to])]
       .join(" ").toLowerCase();
     return hay.includes(q);
   }).sort((a,b)=>(a.sku||"").localeCompare(b.sku||"",undefined,{numeric:true}));
@@ -11062,7 +11077,7 @@ function renderList(){
       <td>${esc(k.model)}</td>
       <td class="hide-sm">${esc(k.variant)}</td>
       <td class="hide-sm">${esc(k.year)}</td>
-      <td>${(k.lines||[]).length}</td>
+      <td>${k.fittingVariants?Math.max(...Object.values(k.fittingVariants).map(v=>v.length))+' × 2 options':(k.lines||[]).length}</td>
       <td class="hide-sm">${k.rrp?('£'+esc(k.rrp)):''}</td>
       <td><div class="rowacts">
         <button class="iconbtn" data-dup="${k.id}" title="Duplicate"><svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg></button>
@@ -11073,14 +11088,17 @@ function renderList(){
   });
   $('#emptyState').classList.toggle('hidden', rows.length>0);
   $('#count').textContent = `${rows.length} of ${inTab.length} ${currentTab==="Fuel Lines"?"fuel":"brake"} kit${inTab.length!==1?'s':''}`;
+  $('#brakeNavCount').textContent=DATA.filter(k=>!isFuel(k)).length;
+  $('#fuelNavCount').textContent=DATA.filter(isFuel).length;
 }
 
 /* ----------------------------- detail ----------------------------- */
 function renderDetail(id){
   CURRENT_DETAIL=id;
   const k = DATA.find(x=>x.id===id); if(!k) return show('list');
+  const variants=k.fittingVariants;const selectedVariant=variants?CURRENT_SPEC_VARIANT:'standard';
   const noteLines = (k.notes||"").split(/\n+/).filter(Boolean);
-  const dlines = (k.lines||[]).slice().sort((a,b)=>{
+  const dlines = (variants?(variants[selectedVariant]||[]):(k.lines||[])).slice().sort((a,b)=>{
     const ea=(a.bag||'').trim(), eb=(b.bag||'').trim();
     if(!ea&&!eb)return 0; if(!ea)return 1; if(!eb)return -1;
     const na=parseFloat(ea), nb=parseFloat(eb);
@@ -11134,6 +11152,8 @@ function renderDetail(id){
       </div>
       ${noteLines.length?`<div class="notebox"><span class="bang">!</span><ul>${noteLines.map(n=>`<li>${esc(n)}</li>`).join("")}</ul></div>`:''}
     </div>
+    ${variants?'<div class="variant-buttons detail-variants"><button class="variant-button '+(selectedVariant==='male'?'active':'')+'" data-specvariant="male">Male fittings</button><button class="variant-button '+(selectedVariant==='female'?'active':'')+'" data-specvariant="female">Female fittings</button></div>':''}
+    ${variants?`<div class="variant-buttons detail-variants"><button class="variant-button ${selectedVariant==='male'?'active':''}" data-specvariant="male">Male fittings</button><button class="variant-button ${selectedVariant==='female'?'active':''}" data-specvariant="female">Female fittings</button></div>`:''}
     <div class="card spec-wrap">
       <table class="spec">
         <colgroup><col class="c-bag"><col><col><col><col class="c-cut"><col><col><col><col><col><col class="c-adr"><col></colgroup>
@@ -11154,7 +11174,10 @@ function fitCell(part,angle,stem){
 }
 
 /* ------------------------------ edit ------------------------------ */
-let DRAFT=null;
+let DRAFT=null;let DRAFT_VARIANT='standard';let CURRENT_SPEC_VARIANT='male';
+function activeLines(){return DRAFT_VARIANT==='standard'?DRAFT.lines:(DRAFT.fittingVariants[DRAFT_VARIANT]||[]);}
+function cloneLineLayout(line,clearFittings=false){const c=JSON.parse(JSON.stringify(line));if(clearFittings)['f1part','f1angle','f1stem','f1banjo','f2part','f2angle','f2stem','f2banjo'].forEach(k=>c[k]='');return c;}
+function toggleFittingVariants(enabled){readForm();if(enabled){const base=(DRAFT.lines||[blankLine()]).map(l=>cloneLineLayout(l));DRAFT.fittingVariants={male:base,female:base.map(l=>cloneLineLayout(l,true))};DRAFT_VARIANT='male';}else{if(!confirm('Turn off male/female fitting versions? The separate female fitting specifications will be removed.')){renderEdit();return;}DRAFT.lines=(DRAFT.fittingVariants.male||activeLines()).map(l=>cloneLineLayout(l));delete DRAFT.fittingVariants;DRAFT_VARIANT='standard';}renderEdit();}
 function newKit(){ return {id:uid(),active:true,sku:"",manufacturer:"",model:"",variant:"",year:"",
   productType:currentTab,rrp:"",notes:"",lines:[blankLine()]}; }
 function blankLine(){ return {bag:"",description:"",from:"",to:"",cutLength:"",
@@ -11163,6 +11186,7 @@ function blankLine(){ return {bag:"",description:"",from:"",to:"",cutLength:"",
 function openEdit(id){
   DRAFT = id ? JSON.parse(JSON.stringify(DATA.find(x=>x.id===id))) : newKit();
   if(!DRAFT) return;
+  DRAFT_VARIANT=DRAFT.fittingVariants?'male':'standard';
   renderEdit();
   show('edit');
 }
@@ -11175,6 +11199,7 @@ function renderEdit(){
       <span class="count">${k.sku?('Editing '+esc(k.sku)):'New kit'}</span>
     </div>
 
+    <div class="workflow-steps" aria-label="Kit entry steps"><div class="workflow-step"><b>1</b>Product details</div><div class="workflow-step"><b>2</b>Vehicle application</div><div class="workflow-step"><b>3</b>Lines and fittings</div></div>
     <div class="section-bar">Product</div>
     <div class="grid">
       <div class="field"><label>SKU</label><input id="f_sku" value="${esc(k.sku)}" placeholder="e.g. FBS-001"></div>
@@ -11192,9 +11217,13 @@ function renderEdit(){
       <div class="field" style="grid-column:1/-1"><label>Notes / OE replacements <span class="hint">one per line — shows in the info box</span></label><textarea id="f_notes">${esc(k.notes)}</textarea></div>
     </div>
 
-    <div class="section-bar">Lines
+    <div class="section-bar">Fitting options</div><div class="variant-panel">
+      <label class="check"><input type="checkbox" id="f_twoVariants" ${k.fittingVariants?'checked':''}> This kit has male and female fitting versions</label>
+      <div class="variant-caption">Keep the line layout together, then enter fitting details separately for each version.</div>
+      ${k.fittingVariants?'<div class="variant-buttons"><button class="variant-button '+(DRAFT_VARIANT==='male'?'active':'')+'" data-fitvariant="male">Male fittings</button><button class="variant-button '+(DRAFT_VARIANT==='female'?'active':'')+'" data-fitvariant="female">Female fittings</button></div>':''}
+    </div><div class="section-bar">Lines
       <span class="lc-tools">
-        <input id="lineCount" type="number" min="1" max="30" inputmode="numeric" placeholder="bags" value="${k.lines.length||''}">
+        <input id="lineCount" type="number" min="1" max="30" inputmode="numeric" placeholder="bags" value="${activeLines().length||''}">
         <button class="btn-white btn-sm" data-setlines>Set rows</button>
         <button class="btn-green btn-sm" data-addline>+ Add line</button>
       </span></div>
@@ -11207,44 +11236,45 @@ function renderEdit(){
 }
 function setLineCount(){
   readForm();
+  const lines=activeLines();
   let n=parseInt(($('#lineCount')||{}).value,10);
-  if(!n||n<1){ toast('Enter how many bags this kit has'); return; }
-  if(n>30) n=30;
-  const cur=DRAFT.lines;
-  if(n<cur.length){
-    const losing=cur.slice(n).some(l=>Object.entries(l).some(([k,v])=>k!=='bag'&&k!=='adrBoots'&&v));
-    if(losing && !confirm('Reduce to '+n+' lines? Rows below '+n+' that already have data will be removed.')) return;
-    DRAFT.lines=cur.slice(0,n);
-  } else { while(DRAFT.lines.length<n) DRAFT.lines.push(blankLine()); }
-  DRAFT.lines.forEach((l,i)=>{ if(!l.bag) l.bag=String(i+1); });
+  if(!n||n<1){toast('Enter how many bags this kit has');return;}
+  if(n>30)n=30;
+  if(n<lines.length){
+    const losing=lines.slice(n).some(l=>Object.entries(l).some(([k,v])=>k!=='bag'&&k!=='adrBoots'&&v));
+    if(losing&&!confirm('Reduce to '+n+' lines? Rows below '+n+' that already have data will be removed.'))return;
+    lines.splice(n);
+  }else while(lines.length<n)lines.push(blankLine());
+  lines.forEach((l,i)=>{if(!l.bag)l.bag=String(i+1);});
   renderLines();
 }
 function renderLines(){
-  const wrap=$('#linesWrap'); wrap.innerHTML="";
-  DRAFT.lines.sort((a,b)=>{
-    const ea=(a.bag||'').trim(), eb=(b.bag||'').trim();
-    if(!ea&&!eb)return 0; if(!ea)return 1; if(!eb)return -1;
-    const na=parseFloat(ea), nb=parseFloat(eb);
+  const wrap=$('#linesWrap');wrap.innerHTML="";
+  const lines=activeLines();
+  lines.sort((a,b)=>{
+    const ea=(a.bag||'').trim(),eb=(b.bag||'').trim();
+    if(!ea&&!eb)return 0;if(!ea)return 1;if(!eb)return -1;
+    const na=parseFloat(ea),nb=parseFloat(eb);
     if(!isNaN(na)&&!isNaN(nb)&&na!==nb)return na-nb;
     return ea.localeCompare(eb,undefined,{numeric:true});
   });
-  const bagCounts={}; DRAFT.lines.forEach(l=>{const b=(l.bag||'').trim()||'—'; bagCounts[b]=(bagCounts[b]||0)+1;});
+  const bagCounts={};lines.forEach(l=>{const b=(l.bag||'').trim()||'—';bagCounts[b]=(bagCounts[b]||0)+1;});
   const bagSeen={};
-  DRAFT.lines.forEach((l,i)=>{
-    const _bag=(l.bag||'').trim(), _bkey=_bag||'—';
-    const _prev=i>0?((DRAFT.lines[i-1].bag||'').trim()||'—'):null;
+  lines.forEach((l,i)=>{
+    const _bag=(l.bag||'').trim(),_bkey=_bag||'—';
+    const _prev=i>0?((lines[i-1].bag||'').trim()||'—'):null;
     if(_bkey!==_prev){
-      const band=document.createElement('div'); band.className='bagband';
+      const band=document.createElement('div');band.className='bagband';
       band.innerHTML=`<span class="bagband-t">${_bag?('BAG '+esc(_bag)):'No bag number yet'}<em>${bagCounts[_bkey]} line${bagCounts[_bkey]!==1?'s':''}</em></span>`+(_bag?`<button class="btn-green btn-sm" data-addbagline="${i}">+ Add line to bag ${esc(_bag)}</button>`:'');
       wrap.appendChild(band);
     }
-    bagSeen[_bkey]=(bagSeen[_bkey]||0)+1; const _pos=bagSeen[_bkey];
-    const c=document.createElement('div'); c.className='linecard';
-    c.innerHTML=`
+    bagSeen[_bkey]=(bagSeen[_bkey]||0)+1;const _pos=bagSeen[_bkey];
+    const card=document.createElement('div');card.className='linecard';
+    card.innerHTML=`
       <div class="lc-bar">${_bag?('Bag '+esc(_bag)+' · line '+_pos+' of '+bagCounts[_bkey]):('Line '+(i+1))}
         <span>
           <button class="iconbtn" data-mv="${i}" data-dir="-1" title="Move up" ${i===0?'disabled style=opacity:.3':''}><svg viewBox="0 0 24 24"><path d="M7 14l5-5 5 5z"/></svg></button>
-          <button class="iconbtn" data-mv="${i}" data-dir="1" title="Move down" ${i===DRAFT.lines.length-1?'disabled style=opacity:.3':''}><svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></button>
+          <button class="iconbtn" data-mv="${i}" data-dir="1" title="Move down" ${i===lines.length-1?'disabled style=opacity:.3':''}><svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></button>
           <button class="iconbtn del" data-rmline="${i}" title="Remove line"><svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg></button>
         </span>
       </div>
@@ -11254,24 +11284,21 @@ function renderLines(){
         <div class="field"><label>From</label><input data-l="${i}" data-k="from" value="${esc(l.from)}" placeholder="Chassis"></div>
         <div class="field"><label>To</label><input data-l="${i}" data-k="to" value="${esc(l.to)}" placeholder="Hub bracket"></div>
         <div class="field"><label>Cut length (mm)</label><input data-l="${i}" data-k="cutLength" value="${esc(l.cutLength)}" placeholder="375" inputmode="numeric"></div>
-
         <div class="subhead">Fitting 1 (end A)</div>
         <div class="field"><label>Part number</label><input data-l="${i}" data-k="f1part" value="${esc(l.f1part)}" placeholder="H669-31"></div>
         <div class="field"><label>Angle</label><input data-l="${i}" data-k="f1angle" value="${esc(l.f1angle)}" placeholder="e.g. 90° / straight"></div>
         <div class="field"><label>Stem</label><input data-l="${i}" data-k="f1stem" value="${esc(l.f1stem)}" placeholder="e.g. male / female"></div>
         <div class="field"><label>Adapters / Banjo bolts</label><input data-l="${i}" data-k="f1banjo" value="${esc(l.f1banjo)}" placeholder="e.g. 90° adapter, banjo bolt"></div>
-
         <div class="subhead">Fitting 2 (end B)</div>
         <div class="field"><label>Part number</label><input data-l="${i}" data-k="f2part" value="${esc(l.f2part)}" placeholder="H657-31"></div>
         <div class="field"><label>Angle</label><input data-l="${i}" data-k="f2angle" value="${esc(l.f2angle)}" placeholder="e.g. 90° / straight"></div>
         <div class="field"><label>Stem</label><input data-l="${i}" data-k="f2stem" value="${esc(l.f2stem)}" placeholder="e.g. male / female"></div>
         <div class="field"><label>Adapters / Banjo bolts</label><input data-l="${i}" data-k="f2banjo" value="${esc(l.f2banjo)}" placeholder="e.g. 90° adapter, banjo bolt"></div>
-
         <div class="field"><label>Supports / brackets</label><input data-l="${i}" data-k="supports" value="${esc(l.supports)}"></div>
         <div class="field"><label>&nbsp;</label><label class="check"><input type="checkbox" data-l="${i}" data-k="adrBoots" ${l.adrBoots?'checked':''}> ADR boots</label></div>
         <div class="field" style="grid-column:1/-1"><label>Line notes</label><textarea data-l="${i}" data-k="notes">${esc(l.notes)}</textarea></div>
       </div>`;
-    wrap.appendChild(c);
+    wrap.appendChild(card);
   });
 }
 function readForm(){
@@ -11285,6 +11312,7 @@ function readForm(){
 function saveDraft(){
   readForm();
   if(!DRAFT.sku){ toast("Add a SKU before saving"); $('#f_sku').focus(); return; }
+  if(DRAFT.fittingVariants)DRAFT.lines=DRAFT.fittingVariants.male||DRAFT.lines;
   const idx=DATA.findIndex(x=>x.id===DRAFT.id);
   const oldSku = idx>=0 ? DATA[idx].sku : null;
   if(idx>=0) DATA[idx]=DRAFT; else DATA.push(DRAFT);
@@ -11295,15 +11323,18 @@ function saveDraft(){
 }
 
 /* --------------------------- interactions -------------------------- */
+editView.addEventListener('change',e=>{if(e.target.id==='f_twoVariants')toggleFittingVariants(e.target.checked);});
 $('#searchBox').addEventListener('input', renderList);
-document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{ currentTab=t.dataset.tab; setActiveTab(); renderList(); }));
+document.querySelectorAll('.module-tab').forEach(t=>t.addEventListener('click',()=>{ currentTab=t.dataset.tab; setActiveTab(); renderList(); }));
 $('#addBtn').addEventListener('click', ()=>openEdit(null));
 $('#homeLogo').addEventListener('click', ()=>{ renderList(); show('list'); });
 
 document.addEventListener('click', e=>{
-  const t=e.target.closest('[data-open],[data-edit],[data-editid],[data-del],[data-dup],[data-back],[data-cancel],[data-save],[data-addline],[data-addbagline],[data-rmline],[data-mv],[data-setlines]');
+  const t=e.target.closest('[data-open],[data-edit],[data-editid],[data-del],[data-dup],[data-back],[data-cancel],[data-save],[data-addline],[data-addbagline],[data-rmline],[data-mv],[data-setlines],[data-fitvariant],[data-specvariant]');
   if(!t) return;
-  if(t.dataset.open!=null) return renderDetail(t.dataset.open);
+  if(t.dataset.open!=null){CURRENT_SPEC_VARIANT='male';return renderDetail(t.dataset.open);}
+  if(t.dataset.specvariant!=null){CURRENT_SPEC_VARIANT=t.dataset.specvariant;return renderDetail(CURRENT_DETAIL);}
+  if(t.dataset.fitvariant!=null){readForm();DRAFT_VARIANT=t.dataset.fitvariant;renderEdit();return;}
   if(t.dataset.edit!=null) return openEdit(t.dataset.edit);
   if(t.dataset.editid!=null) return openEdit(t.dataset.editid);
   if(t.dataset.dup!=null) return dupKit(t.dataset.dup);
@@ -11312,17 +11343,17 @@ document.addEventListener('click', e=>{
   if(t.dataset.cancel!=null){ renderList(); return show('list'); }
   if(t.dataset.save!=null) return saveDraft();
   if(t.dataset.setlines!=null) return setLineCount();
-  if(t.dataset.addline!=null){ readForm(); DRAFT.lines.push(blankLine()); renderLines(); return; }
-  if(t.dataset.addbagline!=null){ readForm(); const _bg=((DRAFT.lines[+t.dataset.addbagline]||{}).bag||''); const _nl=blankLine(); _nl.bag=_bg; DRAFT.lines.push(_nl); renderLines(); return; }
-  if(t.dataset.rmline!=null){ readForm(); DRAFT.lines.splice(+t.dataset.rmline,1); if(!DRAFT.lines.length)DRAFT.lines.push(blankLine()); renderLines(); return; }
+  if(t.dataset.addline!=null){ readForm(); activeLines().push(blankLine()); renderLines(); return; }
+  if(t.dataset.addbagline!=null){ readForm(); const lines=activeLines(); const _bg=((lines[+t.dataset.addbagline]||{}).bag||''); const _nl=blankLine(); _nl.bag=_bg; lines.push(_nl); renderLines(); return; }
+  if(t.dataset.rmline!=null){ readForm(); const lines=activeLines(); lines.splice(+t.dataset.rmline,1); if(!lines.length)lines.push(blankLine()); renderLines(); return; }
   if(t.dataset.mv!=null){ readForm(); const i=+t.dataset.mv,d=+t.dataset.dir,j=i+d;
-    if(j>=0&&j<DRAFT.lines.length){ [DRAFT.lines[i],DRAFT.lines[j]]=[DRAFT.lines[j],DRAFT.lines[i]]; renderLines(); } return; }
+    const lines=activeLines(); if(j>=0&&j<lines.length){ [lines[i],lines[j]]=[lines[j],lines[i]]; renderLines(); } return; }
 });
 
 // live-capture line inputs
 editView.addEventListener('input', e=>{
   const el=e.target; if(el.dataset.l==null) return;
-  const l=DRAFT.lines[+el.dataset.l]; if(!l) return;
+  const l=activeLines()[+el.dataset.l]; if(!l) return;
   l[el.dataset.k] = el.type==='checkbox' ? el.checked : el.value;
 });
 
@@ -11339,7 +11370,7 @@ function delKit(id){
 }
 
 /* --------------------------- import / export ----------------------- */
-const XLSX_HEADER=["SKU","Product Type","Manufacturer","Model","Variant","Year","RRP","Active","Kit Notes",
+const XLSX_HEADER=["SKU","Product Type","Manufacturer","Model","Variant","Year","RRP","Active","Kit Notes","Fitting Variant",
   "Bag","Line Description","From","To","Cut Length (mm)",
   "Fitting 1 Part","Fitting 1 Angle","Fitting 1 Stem","Fitting 1 Adapters/Banjo",
   "Fitting 2 Part","Fitting 2 Angle","Fitting 2 Stem","Fitting 2 Adapters/Banjo",
@@ -11378,13 +11409,13 @@ $('#excelBtn').addEventListener('click', ()=>{
   const sorted=[...DATA].sort((a,b)=>(a.sku||"").localeCompare(b.sku||"",undefined,{numeric:true}));
   sorted.forEach(k=>{
     const base=[k.sku,k.productType,k.manufacturer,k.model,k.variant,k.year,k.rrp,k.active===false?"No":"Yes",clean(k.notes)];
-    const lines=(k.lines&&k.lines.length)?k.lines:[null];
-    lines.forEach(l=>{
-      if(!l){ aoa.push(base.concat(Array(16).fill(""))); return; }
-      aoa.push(base.concat([l.bag,l.description,l.from,l.to,l.cutLength,
+    const variants=k.fittingVariants?Object.entries(k.fittingVariants):[['Standard',k.lines||[]]];
+    variants.forEach(([fitVariant,lines])=>(lines.length?lines:[null]).forEach(l=>{
+      if(!l){aoa.push(base.concat([fitVariant],Array(16).fill('')));return;}
+      aoa.push(base.concat([fitVariant,l.bag,l.description,l.from,l.to,l.cutLength,
         l.f1part,l.f1angle,l.f1stem,l.f1banjo, l.f2part,l.f2angle,l.f2stem,l.f2banjo,
         l.supports, l.adrBoots?"Yes":"No", clean(l.notes)]));
-    });
+    }));
   });
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=XLSX_HEADER.map(hh=>({wch:/Description|From|To|Notes|Adapters|Variant|Kit/.test(hh)?20:13}));
@@ -11404,7 +11435,7 @@ function rowsToKits(rows){
         manufacturer:g(r,"Manufacturer"), model:g(r,"Model"), variant:g(r,"Variant"),
         year:g(r,"Year"), rrp:g(r,"RRP"),
         active: !/^(no|false|0)$/i.test(g(r,"Active")||"yes"),
-        notes:g(r,"Kit Notes"), lines:[]});
+        notes:g(r,"Kit Notes"), lines:[], fittingVariants:{}});
       order.push(sku);
     }
     const k=bySku.get(sku);
@@ -11416,9 +11447,15 @@ function rowsToKits(rows){
       adrBoots:/^(yes|true|1)$/i.test(g(r,"ADR Boots")),
       notes:g(r,"Line Notes")};
     const has=Object.values(L).some(v=> v===true || (typeof v==='string' && v));
-    if(has) k.lines.push(L);
+    const option=(g(r,"Fitting Variant")||"Standard").toLowerCase();
+    if(has||option==='male'||option==='female'){
+      if(option==="male"||option==="female"){
+        if(!k.fittingVariants[option])k.fittingVariants[option]=[];
+        k.fittingVariants[option].push(L);
+      }else k.lines.push(L);
+    }
   });
-  return order.map(s=>bySku.get(s));
+  return order.map(s=>{const k=bySku.get(s);if(!Object.keys(k.fittingVariants).length)delete k.fittingVariants;return k;});
 }
 
 $('#importBtn').addEventListener('click', ()=>$('#importFile').click());
