@@ -233,8 +233,12 @@
 
 <div class="app-layout">
   <nav class="app-nav" aria-label="Kit specification sections"><div class="app-nav-title">Specifications</div>
-    <button class="module-tab active" data-tab="Brake Lines">Brake line kits <span class="nav-count" id="brakeNavCount"></span></button>
+    <button class="module-tab active" data-tab="Full brake systems">Full brake systems <span class="nav-count" id="countFull"></span></button>
+    <button class="module-tab" data-tab="Flexi Line Kits">Flexi line kits <span class="nav-count" id="countFlexi"></span></button>
+    <button class="module-tab" data-tab="Clutch Lines">Clutch lines <span class="nav-count" id="countClutch"></span></button>
+    <button class="module-tab" data-tab="Turbo Oil Feeds">Turbo oil feeds <span class="nav-count" id="countTurbo"></span></button>
     <button class="module-tab" data-tab="Fuel Lines">Fuel line kits <span class="nav-count" id="fuelNavCount"></span></button>
+    <button class="module-tab" data-tab="catalogue">Fittings catalogue</button>
     <div class="app-nav-note">Choose a kit to review its specification, or add a kit and work through product, vehicle and line details.</div>
   </nav><main>
   <!-- ===================== LIST ===================== -->
@@ -274,6 +278,7 @@
 
   <!-- ===================== EDIT ===================== -->
   <section id="editView" class="hidden"></section>
+  <section id="catalogueView" class="hidden"></section>
 </main>
 </div>
 
@@ -10963,6 +10968,9 @@ const DEFAULT_DATA = [
 function seed(){ return DEFAULT_DATA.map(k=>{ const c=JSON.parse(JSON.stringify(k)); c.id=uid(); return c; }); }
 
 let DATA = loadCache();
+const CATALOGUE_SKU="__PIONEER_FITTING_CATALOGUE__";
+const CATALOGUE_KEY="pioneer_kit_fittings_catalogue_v1";
+let CATALOGUE=[];try{CATALOGUE=JSON.parse(localStorage.getItem(CATALOGUE_KEY)||"[]");if(!Array.isArray(CATALOGUE))CATALOGUE=[];}catch(e){CATALOGUE=[];}
 function loadCache(){
   try{ const raw = localStorage.getItem(STORE_KEY);
     if(raw){ const d = JSON.parse(raw); if(Array.isArray(d) && d.length) return d; } }catch(e){}
@@ -10979,7 +10987,7 @@ function setCloudStatus(state){
                  : '\u25CB Offline (this PC only)';
 }
 async function cloudSaveKit(kit){
-  if(!sb||!kit.sku) return; setCloudStatus('sync');
+  if(!sb||!kit.sku||kit.sku===CATALOGUE_SKU) return; setCloudStatus('sync');
   try{ await sb.from('kits').upsert({sku:kit.sku, data:kit, updated_at:new Date().toISOString()}, {onConflict:'sku'}); setCloudStatus('live'); }
   catch(e){ setCloudStatus('offline'); }
 }
@@ -10989,15 +10997,22 @@ async function cloudDeleteKit(sku){
 }
 async function cloudSaveAll(list){
   if(!sb) return;
-  try{ await sb.from('kits').upsert(list.map(k=>({sku:k.sku, data:k, updated_at:new Date().toISOString()})), {onConflict:'sku'}); }
+  const kits=list.filter(k=>k.sku!==CATALOGUE_SKU);
+  try{ if(kits.length) await sb.from('kits').upsert(kits.map(k=>({sku:k.sku, data:k, updated_at:new Date().toISOString()})), {onConflict:'sku'}); }
   catch(e){ setCloudStatus('offline'); }
+}
+async function cloudSaveCatalogue(){
+  try{localStorage.setItem(CATALOGUE_KEY,JSON.stringify(CATALOGUE));}catch(e){}
+  if(!sb)return;setCloudStatus('sync');
+  try{await sb.from('kits').upsert({sku:CATALOGUE_SKU,data:{catalogue:CATALOGUE},updated_at:new Date().toISOString()},{onConflict:'sku'});setCloudStatus('live');}
+  catch(e){setCloudStatus('offline');}
 }
 async function cloudSyncAfterImport(merge){
   if(!sb) return; setCloudStatus('sync');
   await cloudSaveAll(DATA);
   if(!merge){
     try{ const { data } = await sb.from('kits').select('sku');
-      const keep=new Set(DATA.map(k=>k.sku));
+      const keep=new Set([...DATA.map(k=>k.sku),CATALOGUE_SKU]);
       const gone=(data||[]).map(r=>r.sku).filter(s=>s && !keep.has(s));
       if(gone.length) await sb.from('kits').delete().in('sku', gone);
     }catch(e){}
@@ -11013,7 +11028,9 @@ async function initCloud(){
     if(!data || data.length===0){
       const seeded = seed(); await cloudSaveAll(seeded); DATA = seeded;
     } else {
-      DATA = data.map(r=>r.data).filter(Boolean);
+      const catRow=(data||[]).find(r=>r.sku===CATALOGUE_SKU);
+      if(catRow&&catRow.data&&Array.isArray(catRow.data.catalogue)){CATALOGUE=catRow.data.catalogue;try{localStorage.setItem(CATALOGUE_KEY,JSON.stringify(CATALOGUE));}catch(e){}}else if(CATALOGUE.length)await cloudSaveCatalogue();
+      DATA = data.filter(r=>r.sku!==CATALOGUE_SKU).map(r=>r.data).filter(Boolean);
     }
     persist(); renderList(); refreshDetail();
     setCloudStatus('live'); subscribeCloud();
@@ -11025,9 +11042,11 @@ function subscribeCloud(){
     .on('postgres_changes', { event:'*', schema:'public', table:'kits' }, (payload)=>{
       try{
         if(payload.eventType==='DELETE'){
-          const sku=payload.old && payload.old.sku; if(sku) DATA=DATA.filter(k=>k.sku!==sku);
+          const sku=payload.old && payload.old.sku; if(sku&&sku!==CATALOGUE_SKU) DATA=DATA.filter(k=>k.sku!==sku);
         } else {
-          const kit=payload.new && payload.new.data; if(!kit||!kit.sku) return;
+          const row=payload.new;
+          if(row&&row.sku===CATALOGUE_SKU){const cat=row.data&&row.data.catalogue;if(Array.isArray(cat)){CATALOGUE=cat;try{localStorage.setItem(CATALOGUE_KEY,JSON.stringify(CATALOGUE));}catch(e){}if(!catalogueView.classList.contains('hidden'))renderCatalogue();}return;}
+          const kit=row&&row.data; if(!kit||!kit.sku) return;
           const i=DATA.findIndex(k=>k.sku===kit.sku);
           if(i>=0) DATA[i]=kit; else DATA.push(kit);
         }
@@ -11044,21 +11063,25 @@ function refreshDetail(){
 }
 
 /* ------------------------------ views ------------------------------ */
-const listView=$('#listView'), detailView=$('#detailView'), editView=$('#editView');
+const listView=$('#listView'), detailView=$('#detailView'), editView=$('#editView'), catalogueView=$('#catalogueView');
 function show(which){
   listView.classList.toggle('hidden', which!=='list');
   detailView.classList.toggle('hidden', which!=='detail');
   editView.classList.toggle('hidden', which!=='edit');
+  catalogueView.classList.toggle('hidden',which!=='catalogue');
   window.scrollTo(0,0);
 }
 
 /* ------------------------------ list ------------------------------- */
-let currentTab = "Brake Lines";
+let currentTab = "Full brake systems";
+const SPEC_CATEGORIES=["Full brake systems","Flexi Line Kits","Clutch Lines","Turbo Oil Feeds","Fuel Lines"];
 const isFuel = k => /fuel/i.test(k.productType||"") || (k.sku||"").toUpperCase().startsWith("FLK");
-function setActiveTab(){document.querySelectorAll('.module-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===currentTab));const title=$('#listTitle');if(title)title.textContent=currentTab==="Fuel Lines"?"Fuel line kits":"Brake line kits";}
+const categoryOf=k=>{const p=(k.productType||"").trim();if(/^(brake lines?|brake line kits)$/i.test(p))return "Full brake systems";return SPEC_CATEGORIES.find(c=>c.toLowerCase()===p.toLowerCase())||"Full brake systems";};
+function setActiveTab(){document.querySelectorAll('.module-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===currentTab));const title=$('#listTitle');if(title)title.textContent=currentTab==="Fuel Lines"?"Fuel line kits":currentTab;}
+
 function renderList(){
   const q = $('#searchBox').value.trim().toLowerCase();
-  const inTab = DATA.filter(k => currentTab==="Fuel Lines" ? isFuel(k) : !isFuel(k));
+  const inTab = DATA.filter(k => categoryOf(k)===currentTab);
   const rows = inTab.filter(k=>{
     if(!q) return true;
     const allLines=[...(k.lines||[]),...Object.values(k.fittingVariants||{}).flat()];
@@ -11087,9 +11110,12 @@ function renderList(){
     tb.appendChild(tr);
   });
   $('#emptyState').classList.toggle('hidden', rows.length>0);
-  $('#count').textContent = `${rows.length} of ${inTab.length} ${currentTab==="Fuel Lines"?"fuel":"brake"} kit${inTab.length!==1?'s':''}`;
-  $('#brakeNavCount').textContent=DATA.filter(k=>!isFuel(k)).length;
-  $('#fuelNavCount').textContent=DATA.filter(isFuel).length;
+  $('#count').textContent = `${rows.length} of ${inTab.length} ${currentTab==="Fuel Lines"?"fuel":currentTab.toLowerCase()} kit${inTab.length!==1?"s":""}`;
+  $('#countFull').textContent=DATA.filter(k=>categoryOf(k)==="Full brake systems").length;
+  $('#countFlexi').textContent=DATA.filter(k=>categoryOf(k)==="Flexi Line Kits").length;
+  $('#countClutch').textContent=DATA.filter(k=>categoryOf(k)==="Clutch Lines").length;
+  $('#countTurbo').textContent=DATA.filter(k=>categoryOf(k)==="Turbo Oil Feeds").length;
+  $('#fuelNavCount').textContent=DATA.filter(k=>categoryOf(k)==="Fuel Lines").length;
 }
 
 /* ----------------------------- detail ----------------------------- */
@@ -11126,9 +11152,9 @@ function renderDetail(id){
       <td class="wrap">${esc(l.to)||'<span class="no">—</span>'}</td>
       <td>${esc(l.cutLength)}${l.cutLength?' mm':''}</td>
       <td class="fitcell">${f1}</td>
-      <td class="wrap">${esc(l.f1banjo)||'<span class="no">—</span>'}</td>
+      <td class="wrap">${[catalogueItemLabel(l.f1banjo),l.f1adapter?'Adapter: '+catalogueItemLabel(l.f1adapter):''].filter(Boolean).map(esc).join('<br>')||'<span class="no">—</span>'}</td>
       <td class="fitcell">${f2}</td>
-      <td class="wrap">${esc(l.f2banjo)||'<span class="no">—</span>'}</td>
+      <td class="wrap">${[catalogueItemLabel(l.f2banjo),l.f2adapter?'Adapter: '+catalogueItemLabel(l.f2adapter):''].filter(Boolean).map(esc).join('<br>')||'<span class="no">—</span>'}</td>
       <td>${esc(l.supports)||'<span class="no">—</span>'}</td>
       <td>${l.adrBoots?'<span class="yes">✔</span>':'<span class="no">✘</span>'}</td>
       <td class="wrap">${esc(l.notes)}</td>
@@ -11159,7 +11185,7 @@ function renderDetail(id){
         <colgroup><col class="c-bag"><col><col><col><col class="c-cut"><col><col><col><col><col><col class="c-adr"><col></colgroup>
         <thead><tr>
           <th>Bag</th><th>Description</th><th>From</th><th>To</th><th>Cut</th>
-          <th>Fitting 1</th><th>Adapters / Banjo bolts</th><th>Fitting 2</th><th>Adapters / Banjo bolts</th>
+          <th>Fitting 1</th><th>Banjo bolt / adapter</th><th>Fitting 2</th><th>Banjo bolt / adapter</th>
           <th>Supports / brackets</th><th>ADR boots</th><th>Notes</th>
         </tr></thead>
         <tbody>${spec||'<tr><td colspan="12" class="empty">No lines added yet</td></tr>'}</tbody>
@@ -11168,9 +11194,48 @@ function renderDetail(id){
   show('detail');
 }
 function fitCell(part,angle,stem){
-  if(!part && !angle && !stem) return '<span class="no">—</span>';
-  const extra=[angle?('Angle '+esc(angle)):'', stem?('Stem '+esc(stem)):''].filter(Boolean).join(' · ');
-  return `<b>${esc(part)||'—'}</b>${extra?`<span>${extra}</span>`:''}`;
+  const p=catalogueItemLabel(part),st=catalogueItemLabel(stem);
+  if(!p && !angle && !st) return '<span class="no">—</span>';
+  const extra=[angle?('Angle '+esc(angle)):'', st?('Stem '+esc(st)):'' ].filter(Boolean).join(' · ');
+  return `<b>${esc(p)||'—'}</b>${extra?`<span>${extra}</span>`:''}`;
+}
+
+let editingCatalogueId=null;
+function renderCatalogue(){
+  show("catalogue");
+  const rows=CATALOGUE.slice().sort((a,b)=>a.type.localeCompare(b.type)||a.partNumber.localeCompare(b.partNumber,undefined,{numeric:true})).map(x=>'<tr><td>'+esc(x.type)+'</td><td><b>'+esc(x.partNumber)+'</b></td><td>'+esc(x.description)+'</td><td>'+esc(x.specification)+'</td><td>'+esc(x.notes)+'</td><td><button class="btn-white btn-sm" data-catedit="'+esc(x.id)+'">Edit</button> <button class="btn-white btn-sm" data-catdel="'+esc(x.id)+'">Delete</button></td></tr>').join("");
+  catalogueView.innerHTML='<div class="page-heading"><div><h2>Fittings catalogue</h2><p>Reusable components for kit entry: fittings, stems, banjo bolts and adapters.</p></div></div>'+
+    '<div class="card" style="padding:18px;margin-bottom:18px"><div class="grid">'+
+    '<div class="field"><label>Component type</label><select id="cat_type"><option value="fitting">Fitting</option><option value="stem">Stem</option><option value="banjo">Banjo bolt</option><option value="adapter">Adapter</option></select></div>'+
+    '<div class="field"><label>Part number / reference</label><input id="cat_part" placeholder="e.g. H669-31"></div>'+
+    '<div class="field"><label>Description</label><input id="cat_desc" placeholder="Name shown in kit dropdowns"></div>'+
+    '<div class="field"><label>Specification / details</label><input id="cat_spec" placeholder="Thread, size, material or angle"></div>'+
+    '<div class="field" style="grid-column:1/-1"><label>Notes</label><textarea id="cat_notes"></textarea></div></div>'+
+    '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn-green" id="cat_save">'+(editingCatalogueId?'Save changes':'Add to catalogue')+'</button><button class="btn-white" id="cat_cancel" '+(editingCatalogueId?'':'style="display:none"')+'>Cancel edit</button><span class="count" style="align-self:center">'+CATALOGUE.length+' catalogue entries</span></div></div>'+
+    '<div class="card"><table><thead><tr><th>Type</th><th>Part number</th><th>Description</th><th>Specification</th><th>Notes</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'+(rows?'':'<div class="empty">No catalogue entries yet. Add the first component above.</div>')+'</div>';
+  $("#cat_save").addEventListener("click",saveCatalogueItem);
+  $("#cat_cancel").addEventListener("click",()=>{editingCatalogueId=null;renderCatalogue();});
+  catalogueView.querySelectorAll("[data-catedit]").forEach(b=>b.addEventListener("click",()=>{const x=CATALOGUE.find(c=>c.id===b.dataset.catedit);if(!x)return;editingCatalogueId=x.id;renderCatalogue();$("#cat_type").value=x.type;$("#cat_part").value=x.partNumber;$("#cat_desc").value=x.description;$("#cat_spec").value=x.specification;$("#cat_notes").value=x.notes;}));
+  catalogueView.querySelectorAll("[data-catdel]").forEach(b=>b.addEventListener("click",()=>{const x=CATALOGUE.find(c=>c.id===b.dataset.catdel);if(!x||!confirm("Delete "+x.partNumber+" from the catalogue? Existing kit records keep their saved reference."))return;const ref="cat:"+x.id;const fallback="legacy:"+x.partNumber+(x.description?" — "+x.description:"");for(const k of DATA){const groups=[k.lines||[],...Object.values(k.fittingVariants||{})];for(const lines of groups)for(const line of lines)for(const key of ["f1part","f1stem","f1banjo","f1adapter","f2part","f2stem","f2banjo","f2adapter"])if(line[key]===ref)line[key]=fallback;cloudSaveKit(k);}persist();CATALOGUE=CATALOGUE.filter(c=>c.id!==x.id);if(editingCatalogueId===x.id)editingCatalogueId=null;cloudSaveCatalogue();renderCatalogue();renderList();}));
+}
+function saveCatalogueItem(){
+  const x={id:editingCatalogueId||uid(),type:$("#cat_type").value,partNumber:$("#cat_part").value.trim(),description:$("#cat_desc").value.trim(),specification:$("#cat_spec").value.trim(),notes:$("#cat_notes").value.trim()};
+  if(!x.partNumber){toast("Enter a part number or reference");$("#cat_part").focus();return;}
+  const i=CATALOGUE.findIndex(c=>c.id===x.id);if(i>=0)CATALOGUE[i]=x;else CATALOGUE.push(x);
+  editingCatalogueId=null;cloudSaveCatalogue();renderCatalogue();renderList();toast("Catalogue saved");
+}
+function catalogueSelect(lineIndex,line,key,type,label){
+  const current=String(line[key]||"");
+  const selected=current.startsWith("cat:")?current.slice(4):"";
+  let opts=CATALOGUE.filter(c=>c.type===type).map(c=>'<option value="cat:'+esc(c.id)+'" '+(selected===c.id?'selected':'')+'>'+esc(c.partNumber)+' — '+esc(c.description)+'</option>').join("");
+  const legacy=current&&!current.startsWith("cat:")?'<option value="legacy:'+esc(current)+'" selected>Current: '+esc(current)+' (not in catalogue)</option>':"";
+  return '<div class="field"><label>'+label+'</label><select data-l="'+lineIndex+'" data-k="'+key+'"><option value="">— Select '+label.toLowerCase()+' —</option>'+opts+legacy+'</select></div>';
+}
+function catalogueItemLabel(value){
+  if(!value)return "";
+  if(value.startsWith("legacy:"))return value.slice(7);
+  if(value.startsWith("cat:")){const c=CATALOGUE.find(x=>x.id===value.slice(4));return c?(c.partNumber+(c.description?' — '+c.description:'')):value;}
+  return value;
 }
 
 /* ------------------------------ edit ------------------------------ */
@@ -11185,12 +11250,12 @@ function syncOtherVariantLayout(){
   const shared=['bag','description','from','to','cutLength','supports','adrBoots','notes'];
   current.forEach((line,i)=>shared.forEach(key=>other[i][key]=line[key]));
 }
-function cloneLineLayout(line,clearFittings=false){const c=JSON.parse(JSON.stringify(line));if(clearFittings)['f1part','f1angle','f1stem','f1banjo','f2part','f2angle','f2stem','f2banjo'].forEach(k=>c[k]='');return c;}
+function cloneLineLayout(line,clearFittings=false){const c=JSON.parse(JSON.stringify(line));if(clearFittings)['f1part','f1angle','f1stem','f1banjo','f1adapter','f2part','f2angle','f2stem','f2banjo','f2adapter'].forEach(k=>c[k]='');return c;}
 function toggleFittingVariants(enabled){readForm();if(enabled){const base=(DRAFT.lines||[blankLine()]).map(l=>cloneLineLayout(l));DRAFT.fittingVariants={male:base,female:base.map(l=>cloneLineLayout(l,true))};DRAFT_VARIANT='male';}else{if(!confirm('Turn off male/female fitting versions? The separate female fitting specifications will be removed.')){renderEdit();return;}DRAFT.lines=(DRAFT.fittingVariants.male||activeLines()).map(l=>cloneLineLayout(l));delete DRAFT.fittingVariants;DRAFT_VARIANT='standard';}renderEdit();}
 function newKit(){ return {id:uid(),active:true,sku:"",manufacturer:"",model:"",variant:"",year:"",
-  productType:currentTab,rrp:"",notes:"",lines:[blankLine()]}; }
+  productType:SPEC_CATEGORIES.includes(currentTab)?currentTab:"Full brake systems",rrp:"",notes:"",lines:[blankLine()]}; }
 function blankLine(){ return {bag:"",description:"",from:"",to:"",cutLength:"",
-  f1part:"",f1angle:"",f1stem:"",f1banjo:"",f2part:"",f2angle:"",f2stem:"",f2banjo:"",supports:"",adrBoots:false,notes:""}; }
+  f1part:"",f1angle:"",f1stem:"",f1banjo:"",f1adapter:"",f2part:"",f2angle:"",f2stem:"",f2banjo:"",f2adapter:"",supports:"",adrBoots:false,notes:""}; }
 
 function openEdit(id){
   DRAFT = id ? JSON.parse(JSON.stringify(DATA.find(x=>x.id===id))) : newKit();
@@ -11212,7 +11277,7 @@ function renderEdit(){
     <div class="section-bar">Product</div>
     <div class="grid">
       <div class="field"><label>SKU</label><input id="f_sku" value="${esc(k.sku)}" placeholder="e.g. FBS-001"></div>
-      <div class="field"><label>Product type</label><input id="f_ptype" value="${esc(k.productType)}" placeholder="Brake Lines"></div>
+      <div class="field"><label>Specification collection</label><select id="f_ptype">${SPEC_CATEGORIES.map(c=>`<option value="${esc(c)}" ${categoryOf(k)===c?"selected":""}>${esc(c)}</option>`).join("")}</select></div>
       <div class="field"><label>RRP <span class="hint">£, numbers only</span></label><input id="f_rrp" value="${esc(k.rrp)}" placeholder="89.70" inputmode="decimal"></div>
       <div class="field"><label>&nbsp;</label><label class="check"><input type="checkbox" id="f_active" ${k.active!==false?'checked':''}> Active</label></div>
     </div>
@@ -11295,15 +11360,17 @@ function renderLines(){
         <div class="field"><label>To</label><input data-l="${i}" data-k="to" value="${esc(l.to)}" placeholder="Hub bracket"></div>
         <div class="field"><label>Cut length (mm)</label><input data-l="${i}" data-k="cutLength" value="${esc(l.cutLength)}" placeholder="375" inputmode="numeric"></div>
         <div class="subhead">Fitting 1 (end A)</div>
-        <div class="field"><label>Part number</label><input data-l="${i}" data-k="f1part" value="${esc(l.f1part)}" placeholder="H669-31"></div>
+        ${catalogueSelect(i,l,"f1part","fitting","Fitting")}
         <div class="field"><label>Angle</label><input data-l="${i}" data-k="f1angle" value="${esc(l.f1angle)}" placeholder="e.g. 90° / straight"></div>
-        <div class="field"><label>Stem</label><input data-l="${i}" data-k="f1stem" value="${esc(l.f1stem)}" placeholder="e.g. male / female"></div>
-        <div class="field"><label>Adapters / Banjo bolts</label><input data-l="${i}" data-k="f1banjo" value="${esc(l.f1banjo)}" placeholder="e.g. 90° adapter, banjo bolt"></div>
+        ${catalogueSelect(i,l,"f1stem","stem","Stem")}
+        ${catalogueSelect(i,l,"f1banjo","banjo","Banjo bolt")}
+        ${catalogueSelect(i,l,"f1adapter","adapter","Adapter")}
         <div class="subhead">Fitting 2 (end B)</div>
-        <div class="field"><label>Part number</label><input data-l="${i}" data-k="f2part" value="${esc(l.f2part)}" placeholder="H657-31"></div>
+        ${catalogueSelect(i,l,"f2part","fitting","Fitting")}
         <div class="field"><label>Angle</label><input data-l="${i}" data-k="f2angle" value="${esc(l.f2angle)}" placeholder="e.g. 90° / straight"></div>
-        <div class="field"><label>Stem</label><input data-l="${i}" data-k="f2stem" value="${esc(l.f2stem)}" placeholder="e.g. male / female"></div>
-        <div class="field"><label>Adapters / Banjo bolts</label><input data-l="${i}" data-k="f2banjo" value="${esc(l.f2banjo)}" placeholder="e.g. 90° adapter, banjo bolt"></div>
+        ${catalogueSelect(i,l,"f2stem","stem","Stem")}
+        ${catalogueSelect(i,l,"f2banjo","banjo","Banjo bolt")}
+        ${catalogueSelect(i,l,"f2adapter","adapter","Adapter")}
         <div class="field"><label>Supports / brackets</label><input data-l="${i}" data-k="supports" value="${esc(l.supports)}"></div>
         <div class="field"><label>&nbsp;</label><label class="check"><input type="checkbox" data-l="${i}" data-k="adrBoots" ${l.adrBoots?'checked':''}> ADR boots</label></div>
         <div class="field" style="grid-column:1/-1"><label>Line notes</label><textarea data-l="${i}" data-k="notes">${esc(l.notes)}</textarea></div>
@@ -11312,7 +11379,7 @@ function renderLines(){
   });
 }
 function readForm(){
-  DRAFT.sku=$('#f_sku').value.trim(); DRAFT.productType=$('#f_ptype').value.trim();
+  DRAFT.sku=$('#f_sku').value.trim(); DRAFT.productType=$('#f_ptype').value;
   DRAFT.rrp=$('#f_rrp').value.trim(); DRAFT.active=$('#f_active').checked;
   DRAFT.manufacturer=$('#f_make').value.trim(); DRAFT.model=$('#f_model').value.trim();
   DRAFT.variant=$('#f_variant').value.trim(); DRAFT.year=$('#f_year').value.trim();
@@ -11335,7 +11402,7 @@ function saveDraft(){
 /* --------------------------- interactions -------------------------- */
 editView.addEventListener('change',e=>{if(e.target.id==='f_twoVariants')toggleFittingVariants(e.target.checked);});
 $('#searchBox').addEventListener('input', renderList);
-document.querySelectorAll('.module-tab').forEach(t=>t.addEventListener('click',()=>{ currentTab=t.dataset.tab; setActiveTab(); renderList(); }));
+document.querySelectorAll('.module-tab').forEach(t=>t.addEventListener('click',()=>{ currentTab=t.dataset.tab;if(currentTab==='catalogue'){renderCatalogue();return;}setActiveTab();renderList();show('list'); }));
 $('#addBtn').addEventListener('click', ()=>openEdit(null));
 $('#homeLogo').addEventListener('click', ()=>{ renderList(); show('list'); });
 
@@ -11364,8 +11431,8 @@ document.addEventListener('click', e=>{
 editView.addEventListener('input', e=>{
   const el=e.target; if(el.dataset.l==null) return;
   const l=activeLines()[+el.dataset.l]; if(!l) return;
-  l[el.dataset.k] = el.type==='checkbox' ? el.checked : el.value;
-  if(DRAFT.fittingVariants&&!['f1part','f1angle','f1stem','f1banjo','f2part','f2angle','f2stem','f2banjo'].includes(el.dataset.k))syncOtherVariantLayout();
+  l[el.dataset.k] = el.type==='checkbox' ? el.checked : (el.tagName==='SELECT'?(el.value.startsWith('legacy:')?el.value.slice(7):el.value):el.value);
+  if(DRAFT.fittingVariants&&!['f1part','f1angle','f1stem','f1banjo','f1adapter','f2part','f2angle','f2stem','f2banjo','f2adapter'].includes(el.dataset.k))syncOtherVariantLayout();
 });
 
 function dupKit(id){
@@ -11383,8 +11450,8 @@ function delKit(id){
 /* --------------------------- import / export ----------------------- */
 const XLSX_HEADER=["SKU","Product Type","Manufacturer","Model","Variant","Year","RRP","Active","Kit Notes","Fitting Variant",
   "Bag","Line Description","From","To","Cut Length (mm)",
-  "Fitting 1 Part","Fitting 1 Angle","Fitting 1 Stem","Fitting 1 Adapters/Banjo",
-  "Fitting 2 Part","Fitting 2 Angle","Fitting 2 Stem","Fitting 2 Adapters/Banjo",
+  "Fitting 1 Part","Fitting 1 Angle","Fitting 1 Stem","Fitting 1 Banjo bolt","Fitting 1 Adapter",
+  "Fitting 2 Part","Fitting 2 Angle","Fitting 2 Stem","Fitting 2 Banjo bolt","Fitting 2 Adapter",
   "Supports/Brackets","ADR Boots","Line Notes"];
 
 function applyImport(d, count){
@@ -11404,9 +11471,9 @@ try{ dirty = localStorage.getItem(DIRTY_KEY)==='1'; }catch(e){}
 function updateBackupBar(){ const b=document.getElementById('backupBar'); if(b) b.classList.toggle('hidden', !dirty); }
 function setDirty(v){ dirty=v; try{ localStorage.setItem(DIRTY_KEY, v?'1':'0'); }catch(e){} updateBackupBar(); }
 function doExportJSON(){
-  const blob=new Blob([JSON.stringify(DATA,null,2)],{type:'application/json'});
+  const blob=new Blob([JSON.stringify({version:2,kits:DATA,catalogue:CATALOGUE},null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download='pioneer4x4-brakeline-specs-'+new Date().toISOString().slice(0,10)+'.json';
+  a.download='pioneer4x4-kit-specs-'+new Date().toISOString().slice(0,10)+'.json';
   a.click(); URL.revokeObjectURL(a.href); setDirty(false); toast("Backup saved — keep it somewhere safe");
 }
 window.addEventListener('beforeunload', e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; } });
@@ -11422,9 +11489,9 @@ $('#excelBtn').addEventListener('click', ()=>{
     const base=[k.sku,k.productType,k.manufacturer,k.model,k.variant,k.year,k.rrp,k.active===false?"No":"Yes",clean(k.notes)];
     const variants=k.fittingVariants?Object.entries(k.fittingVariants):[['Standard',k.lines||[]]];
     variants.forEach(([fitVariant,lines])=>(lines.length?lines:[null]).forEach(l=>{
-      if(!l){aoa.push(base.concat([fitVariant],Array(16).fill('')));return;}
+      if(!l){aoa.push(base.concat([fitVariant],Array(18).fill('')));return;}
       aoa.push(base.concat([fitVariant,l.bag,l.description,l.from,l.to,l.cutLength,
-        l.f1part,l.f1angle,l.f1stem,l.f1banjo, l.f2part,l.f2angle,l.f2stem,l.f2banjo,
+        displaySpecValue(l.f1part),l.f1angle,displaySpecValue(l.f1stem),displaySpecValue(l.f1banjo),displaySpecValue(l.f1adapter), displaySpecValue(l.f2part),l.f2angle,displaySpecValue(l.f2stem),displaySpecValue(l.f2banjo),displaySpecValue(l.f2adapter),
         l.supports, l.adrBoots?"Yes":"No", clean(l.notes)]));
     }));
   });
@@ -11432,6 +11499,8 @@ $('#excelBtn').addEventListener('click', ()=>{
   ws['!cols']=XLSX_HEADER.map(hh=>({wch:/Description|From|To|Notes|Adapters|Variant|Kit/.test(hh)?20:13}));
   ws['!freeze']={xSplit:1,ySplit:1};
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Kit specs");
+  const cws=XLSX.utils.json_to_sheet(CATALOGUE.map(x=>({Type:x.type,"Part number":x.partNumber,Description:x.description,Specification:x.specification,Notes:x.notes})));
+  XLSX.utils.book_append_sheet(wb,cws,"Fittings catalogue");
   XLSX.writeFile(wb,'pioneer4x4-kit-specs-'+new Date().toISOString().slice(0,10)+'.xlsx');
   setDirty(false); toast('Excel downloaded');
 });
@@ -11452,8 +11521,8 @@ function rowsToKits(rows){
     const k=bySku.get(sku);
     const L={bag:g(r,"Bag"),description:g(r,"Line Description"),from:g(r,"From"),to:g(r,"To"),
       cutLength:g(r,"Cut Length (mm)"),
-      f1part:g(r,"Fitting 1 Part"),f1angle:g(r,"Fitting 1 Angle"),f1stem:g(r,"Fitting 1 Stem"),f1banjo:g(r,"Fitting 1 Adapters/Banjo"),
-      f2part:g(r,"Fitting 2 Part"),f2angle:g(r,"Fitting 2 Angle"),f2stem:g(r,"Fitting 2 Stem"),f2banjo:g(r,"Fitting 2 Adapters/Banjo"),
+      f1part:g(r,"Fitting 1 Part"),f1angle:g(r,"Fitting 1 Angle"),f1stem:g(r,"Fitting 1 Stem"),f1banjo:g(r,"Fitting 1 Banjo bolt")||g(r,"Fitting 1 Adapters/Banjo"),f1adapter:g(r,"Fitting 1 Adapter"),
+      f2part:g(r,"Fitting 2 Part"),f2angle:g(r,"Fitting 2 Angle"),f2stem:g(r,"Fitting 2 Stem"),f2banjo:g(r,"Fitting 2 Banjo bolt")||g(r,"Fitting 2 Adapters/Banjo"),f2adapter:g(r,"Fitting 2 Adapter"),
       supports:g(r,"Supports/Brackets"),
       adrBoots:/^(yes|true|1)$/i.test(g(r,"ADR Boots")),
       notes:g(r,"Line Notes")};
@@ -11490,8 +11559,9 @@ $('#importFile').addEventListener('change', e=>{
   } else {
     r.onload=()=>{ try{
         const d=JSON.parse(r.result);
-        if(!Array.isArray(d)) throw 0;
-        applyImport(d);
+        if(Array.isArray(d))applyImport(d);
+        else if(d&&Array.isArray(d.kits)){if(Array.isArray(d.catalogue)){CATALOGUE=d.catalogue;cloudSaveCatalogue();}applyImport(d.kits);}
+        else throw 0;
       }catch(err){ toast("That file isn't a valid specs backup"); }
       e.target.value="";
     };
@@ -11503,7 +11573,7 @@ $('#importFile').addEventListener('change', e=>{
 let toastT;
 function toast(msg){ const el=$('#toast'); el.textContent=msg; el.classList.add('show');
   clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('show'),2200); }
-renderList(); show('list'); updateBackupBar(); initCloud();
+setActiveTab();renderList(); show('list'); updateBackupBar(); initCloud();
 try{ var _ic=document.querySelector('link[rel="apple-touch-icon"]').href;
   var _mf={name:'Pioneer Kit Specs',short_name:'Kit Specs',start_url:'.',scope:'.',display:'standalone',background_color:'#ffffff',theme_color:'#46b31a',icons:[{src:_ic,sizes:'512x512',type:'image/png',purpose:'any'}]};
   var _ml=document.getElementById('manifestLink'); if(_ml){ _ml.href=URL.createObjectURL(new Blob([JSON.stringify(_mf)],{type:'application/json'})); }
