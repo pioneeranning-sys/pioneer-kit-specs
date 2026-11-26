@@ -220,6 +220,7 @@
   <div class="top-spacer"></div>
   <div class="top-actions">
     <span id="cloudStatus" class="cloud sync">… connecting</span>
+    <button class="btn-outline btn-sm" id="refreshBtn" title="Reload saved records from the live database">Refresh</button>
     <button class="btn-outline btn-sm" id="importBtn" title="Load a JSON backup or an Excel / CSV file">Import</button>
     <button class="btn-outline btn-sm" id="exportBtn" title="Save a full backup file to your computer">Back up</button>
     <button class="btn-green btn-sm" id="excelBtn" title="Download a spreadsheet to fill in fittings (or re-import one)">Excel</button>
@@ -11036,6 +11037,20 @@ async function initCloud(){
     setCloudStatus('live'); subscribeCloud();
   }catch(e){ setCloudStatus('offline'); toast('Cloud unavailable \u2014 showing the copy on this PC'); }
 }
+async function refreshCloudData(){
+  if(!sb){setCloudStatus('offline');toast('Cloud unavailable — refresh could not reach the database');return false;}
+  setCloudStatus('sync');
+  try{
+    const {data,error}=await sb.from('kits').select('sku,data');
+    if(error) throw error;
+    const rows=Array.isArray(data)?data:[];
+    const catRow=rows.find(r=>r.sku===CATALOGUE_SKU);
+    CATALOGUE=catRow&&catRow.data&&Array.isArray(catRow.data.catalogue)?catRow.data.catalogue:[];
+    try{localStorage.setItem(CATALOGUE_KEY,JSON.stringify(CATALOGUE));}catch(e){}
+    DATA=rows.filter(r=>r.sku!==CATALOGUE_SKU).map(r=>r.data).filter(Boolean);
+    persist();renderList();refreshDetail();setCloudStatus('live');toast('Database refreshed');return true;
+  }catch(e){setCloudStatus('offline');toast('Refresh failed — showing saved data on this PC');return false;}
+}
 function subscribeCloud(){
   if(!sb) return;
   sb.channel('kits-realtime')
@@ -11538,6 +11553,13 @@ function rowsToKits(rows){
   return order.map(s=>{const k=bySku.get(s);if(!Object.keys(k.fittingVariants).length)delete k.fittingVariants;return k;});
 }
 
+$('#refreshBtn').addEventListener('click', async ()=>{
+  const btn=$('#refreshBtn');
+  if(!editView.classList.contains('hidden')){toast('Save or cancel the current edit before refreshing');return;}
+  if($('#cloudStatus').classList.contains('sync')){toast('Please wait for the current save to finish');return;}
+  btn.disabled=true;btn.textContent='Refreshing…';
+  try{await refreshCloudData();}finally{btn.disabled=false;btn.textContent='Refresh';}
+});
 $('#importBtn').addEventListener('click', ()=>$('#importFile').click());
 $('#importFile').addEventListener('change', e=>{
   const file=e.target.files[0]; if(!file) return;
