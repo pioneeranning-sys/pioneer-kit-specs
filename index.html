@@ -11178,7 +11178,7 @@ function renderDetail(id){
       </div>
       ${noteLines.length?`<div class="notebox"><span class="bang">!</span><ul>${noteLines.map(n=>`<li>${esc(n)}</li>`).join("")}</ul></div>`:''}
     </div>
-    ${variants?'<div class="variant-buttons detail-variants"><button class="variant-button '+(selectedVariant==='male'?'active':'')+'" data-specvariant="male">Male fittings</button><button class="variant-button '+(selectedVariant==='female'?'active':'')+'" data-specvariant="female">Female fittings</button></div>':''}
+    
     ${variants?`<div class="variant-buttons detail-variants"><button class="variant-button ${selectedVariant==='male'?'active':''}" data-specvariant="male">Male fittings</button><button class="variant-button ${selectedVariant==='female'?'active':''}" data-specvariant="female">Female fittings</button></div>`:''}
     <div class="card spec-wrap">
       <table class="spec">
