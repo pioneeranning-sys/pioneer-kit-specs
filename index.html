@@ -239,6 +239,7 @@
     <button class="module-tab" data-tab="Clutch Lines">Clutch lines <span class="nav-count" id="countClutch"></span></button>
     <button class="module-tab" data-tab="Turbo Oil Feeds">Turbo oil feeds <span class="nav-count" id="countTurbo"></span></button>
     <button class="module-tab" data-tab="Fuel Lines">Fuel line kits <span class="nav-count" id="fuelNavCount"></span></button>
+    <button class="module-tab" data-tab="Diesel leak-off kits">Diesel leak-off kits <span class="nav-count" id="countLeakoff"></span></button>
     <button class="module-tab" data-tab="catalogue">Fittings catalogue</button>
     <div class="app-nav-note">Choose a kit to review its specification, or add a kit and work through product, vehicle and line details.</div>
   </nav><main>
@@ -11089,7 +11090,7 @@ function show(which){
 
 /* ------------------------------ list ------------------------------- */
 let currentTab = "Full brake systems";
-const SPEC_CATEGORIES=["Full brake systems","Flexi Line Kits","Clutch Lines","Turbo Oil Feeds","Fuel Lines"];
+const SPEC_CATEGORIES=["Full brake systems","Flexi Line Kits","Clutch Lines","Turbo Oil Feeds","Fuel Lines","Diesel leak-off kits"];
 const isFuel = k => /fuel/i.test(k.productType||"") || (k.sku||"").toUpperCase().startsWith("FLK");
 const categoryOf=k=>{const p=(k.productType||"").trim();if(/^(brake lines?|brake line kits)$/i.test(p))return "Full brake systems";return SPEC_CATEGORIES.find(c=>c.toLowerCase()===p.toLowerCase())||"Full brake systems";};
 function setActiveTab(){document.querySelectorAll('.module-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===currentTab));const title=$('#listTitle');if(title)title.textContent=currentTab==="Fuel Lines"?"Fuel line kits":currentTab;}
@@ -11131,6 +11132,7 @@ function renderList(){
   $('#countClutch').textContent=DATA.filter(k=>categoryOf(k)==="Clutch Lines").length;
   $('#countTurbo').textContent=DATA.filter(k=>categoryOf(k)==="Turbo Oil Feeds").length;
   $('#fuelNavCount').textContent=DATA.filter(k=>categoryOf(k)==="Fuel Lines").length;
+  $('#countLeakoff').textContent=DATA.filter(k=>categoryOf(k)==="Diesel leak-off kits").length;
 }
 
 /* ----------------------------- detail ----------------------------- */
